@@ -623,7 +623,8 @@ export function getQueryFetcher(
     const codec = getSyncDeltaCodec();
     if (!codec?.enabled(name)) return runGated(name, args, undefined, queryOptions);
 
-    const viewKey = codec.viewKey(name, args);
+    const rawViewKey = codec.viewKey(name, args);
+    const viewKey = requestContext ? JSON.stringify([requestContext.key, rawViewKey]) : rawViewKey;
     const cursor = codec.cursorFor(viewKey);
     const raw = await runGated(name, args, cursor ?? '', queryOptions);
     const dec = codec.decodeResult(viewKey, raw);

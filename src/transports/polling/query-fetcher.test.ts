@@ -71,6 +71,59 @@ afterEach(() => {
 });
 
 describe('getQueryFetcher — request shape', () => {
+  it('keeps queued reads on their captured context while another context uses the same scheduler', async () => {
+    const held = deferred<void>();
+    const seen: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+      const url = new URL(input);
+      const machine = new Headers(init?.headers).get('x-papercusp-machine')!;
+      expect(url.searchParams.get('desktopHost')).toBe(machine);
+      seen.push(`${url.searchParams.get('name')}:${machine}`);
+      if (url.searchParams.get('name') === 'blocker') await held.promise;
+      return okResponse({ rows: [machine], version: '1' });
+    }));
+    const endpoint = ep();
+    const context = (machine: string) => ({ key: machine,
+      headers: { 'x-papercusp-machine': machine }, params: { desktopHost: machine } });
+    const a = getQueryFetcher(endpoint, undefined, 1, undefined, context('a'));
+    const b = getQueryFetcher(endpoint, undefined, 1, undefined, context('b'));
+    const blocker = a('blocker', {});
+    await vi.waitFor(() => expect(seen).toEqual(['blocker:a']));
+    const queuedA = a('detail', {});
+    const queuedB = b('detail', {});
+    held.resolve();
+    const results = await Promise.all([blocker, queuedA, queuedB]);
+    expect(results.map(result => result.rows)).toEqual([['a'], ['a'], ['b']]);
+    expect(seen).toEqual(['blocker:a', 'detail:a', 'detail:b']);
+  });
+
+  it('keeps a shared delta codec cold for a different context and retains the original cursor', async () => {
+    const cursors = new Map<string, string>();
+    const seen: Array<[string, string | null]> = [];
+    setSyncDeltaCodec({ enabled: () => true, viewKey: () => 'same-view',
+      cursorFor: key => cursors.get(key),
+      decodeResult: (key, slot) => {
+        const cursor = slot.delta?.cursor;
+        if (typeof cursor !== 'string') throw new Error('Fixture delta cursor is missing');
+        cursors.set(key, cursor);
+        return { rows: slot.rows ?? [], refetchFull: false };
+      },
+    });
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      const url = new URL(input);
+      const machine = url.searchParams.get('desktopHost')!;
+      seen.push([machine, url.searchParams.get('delta')]);
+      return okResponse({ rows: [machine], version: '1', delta: { mode: 'full', cursor: `${machine}-cursor` } });
+    }));
+    const endpoint = ep();
+    const a = getQueryFetcher(endpoint, undefined, 1, undefined, { key: 'a', params: { desktopHost: 'a' } });
+    const b = getQueryFetcher(endpoint, undefined, 1, undefined, { key: 'b', params: { desktopHost: 'b' } });
+    await a('detail', {});
+    await b('detail', {});
+    await a('detail', {});
+    expect(seen).toEqual([['a', ''], ['b', ''], ['a', 'a-cursor']]);
+  });
+
   it('sends ONE GET per query carrying name + args, and returns { rows, version }', async () => {
     const mockFetch = vi.fn().mockResolvedValue(okResponse({ rows: [{ id: 'a' }], version: 'v1' }));
     vi.stubGlobal('fetch', mockFetch);

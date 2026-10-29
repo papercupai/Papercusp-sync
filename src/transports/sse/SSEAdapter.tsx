@@ -207,7 +207,9 @@ function SSESubscriber({
     // WI-2141694 exists to conserve, while making the cross-tab union below
     // meaningless. Keying off `authedUrl` reproduces the pre-declaration key
     // byte-for-byte, so election behaviour is unchanged by this feature.
-    const channelKey = defaultControlChannelKey(authedUrl);
+    const channelKey = requestContext
+      ? JSON.stringify([defaultControlChannelKey(authedUrl), requestContext.key])
+      : defaultControlChannelKey(authedUrl);
 
     let source: ReturnType<typeof createCrossTabControlStream> | null = null;
     const interest = createInterestTracker({
