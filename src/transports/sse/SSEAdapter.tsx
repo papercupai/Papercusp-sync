@@ -101,7 +101,7 @@ function reportInterestCapCrossing(names: Iterable<string>): void {
   lastInterestOverCap = overCap;
 }
 import { reportSyncReachable, reportSyncUnreachable } from '../../connectivity';
-import type { SyncType } from '../../types';
+import type { SyncType, SyncRequestContext } from '../../types';
 
 interface SSEAdapterProps {
   children: ReactNode;
@@ -115,6 +115,7 @@ interface SSEAdapterProps {
   userId?: string;
   server?: string;
   restEndpoint?: string;
+  requestContext?: SyncRequestContext;
   /**
    * Drift-repair refetch interval. Under SSE, freshness comes from
    * invalidate-driven refetches — this tick only repairs pushes lost to an
@@ -156,6 +157,7 @@ interface UpdateEvent {
 
 function SSESubscriber({
   endpoint,
+  requestContext,
   onError,
   onTransportHealthChange,
   tokenQueryParam,
@@ -163,6 +165,7 @@ function SSESubscriber({
   visibilityPause,
 }: {
   endpoint: string;
+  requestContext?: SyncRequestContext;
   onError?: (e: Error) => void;
   onTransportHealthChange?: (healthy: boolean) => void;
   tokenQueryParam?: string;
@@ -177,9 +180,10 @@ function SSESubscriber({
 
     // Build the SSE URL once; both the initial open and reconnects use it.
     const baseUrl = endpointOverride ?? `${endpoint}/sse`;
-    const authedUrl = tokenQueryParam
-      ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(tokenQueryParam)}`
-      : baseUrl;
+    const params = new URLSearchParams(requestContext?.params);
+    if (tokenQueryParam) params.set('token', tokenQueryParam);
+    const authedUrl = params.size
+      ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${params}` : baseUrl;
 
     // Per-client invalidation filtering: declare the query names this browser
     // actually observes, so the server skips fanning the rest down this
@@ -412,7 +416,7 @@ function SSESubscriber({
       controlStream?.release();
       controlStream = null;
     };
-  }, [endpoint, queryClient, onError, onTransportHealthChange, tokenQueryParam, endpointOverride, visibilityPause]);
+  }, [endpoint, requestContext, queryClient, onError, onTransportHealthChange, tokenQueryParam, endpointOverride, visibilityPause]);
 
   return null;
 }
@@ -430,6 +434,7 @@ export function SSEAdapter({
   children,
   stream = true,
   restEndpoint,
+  requestContext,
   server,
   pollIntervalMs = SSE_DRIFT_REPAIR_DEFAULT_MS,
   onTransportError,
@@ -442,28 +447,29 @@ export function SSEAdapter({
   queryNameAllowlist,
 }: SSEAdapterProps) {
   const endpoint = restEndpoint ?? (server ? `${server}/zero` : DEFAULT_REST_ENDPOINT);
-  const queryClient = getQueryClient();
+  const queryClient = getQueryClient(requestContext?.key);
 
   const useDataImpl = useMemo(
     () =>
       createUsePollingQuery({
         restEndpoint: endpoint,
+        requestContext,
         defaultPollIntervalMs: pollIntervalMs,
         tokenQueryParam,
         maxInFlightFetches,
         persistExcludeQueryNames,
         queryNameAllowlist,
       }),
-    [endpoint, pollIntervalMs, tokenQueryParam, maxInFlightFetches, persistExcludeQueryNames, queryNameAllowlist],
+    [endpoint, requestContext, pollIntervalMs, tokenQueryParam, maxInFlightFetches, persistExcludeQueryNames, queryNameAllowlist],
   );
 
   const prefetch = useMemo(
     () =>
       createPrefetchSync(
-        { restEndpoint: endpoint, defaultPollIntervalMs: pollIntervalMs, tokenQueryParam, maxInFlightFetches, queryNameAllowlist },
+        { restEndpoint: endpoint, requestContext, defaultPollIntervalMs: pollIntervalMs, tokenQueryParam, maxInFlightFetches, queryNameAllowlist },
         queryClient,
       ),
-    [endpoint, pollIntervalMs, tokenQueryParam, maxInFlightFetches, queryNameAllowlist, queryClient],
+    [endpoint, requestContext, pollIntervalMs, tokenQueryParam, maxInFlightFetches, queryNameAllowlist, queryClient],
   );
 
   const ctxValue = useMemo(
@@ -477,6 +483,7 @@ export function SSEAdapter({
         {stream ? (
           <SSESubscriber
             endpoint={endpoint}
+            requestContext={requestContext}
             onError={onTransportError}
             onTransportHealthChange={onTransportHealthChange}
             tokenQueryParam={tokenQueryParam}

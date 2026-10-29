@@ -51,6 +51,7 @@ import {
   type OriginSchedulerClass,
 } from './origin-scheduler';
 import type { ConcurrencyGate } from './concurrency-gate';
+import type { SyncRequestContext } from '../../types';
 
 /** Monotonic-ish clock; `performance` is absent in some non-browser test hosts. */
 const nowMs = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -262,8 +263,10 @@ export function getQueryFetcher(
   tokenQueryParam?: string,
   maxInFlight?: number,
   requestTimeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS,
+  requestContext?: SyncRequestContext,
 ): QueryFetch {
-  const key = keyFor(restEndpoint, tokenQueryParam);
+  const key = keyFor(restEndpoint, tokenQueryParam) + (requestContext
+    ? JSON.stringify([requestContext.key, requestContext.headers, requestContext.params]) : '');
   const existing = fetchers.get(key);
   if (existing) {
     if (maxInFlight !== undefined && existing.gate.limit !== maxInFlight) {
@@ -309,6 +312,7 @@ export function getQueryFetcher(
     meta: RequestMeta,
   ): Promise<QueryResult> => {
     const params = new URLSearchParams({ name, args: JSON.stringify(args ?? {}) });
+    for (const [key, value] of Object.entries(requestContext?.params ?? {})) params.set(key, value);
     // Only a delta-opted query carries `delta`; absent → the server's full path,
     // byte-identical to a pre-delta request.
     if (delta !== undefined) params.set('delta', delta);
@@ -346,7 +350,10 @@ export function getQueryFetcher(
       let res: Response;
       try {
         meta.sentAtMs = nowMs();
-        const inFlight = fetch(`${restEndpoint}/rest-query?${params.toString()}`, { signal: deadline.signal });
+        const inFlight = fetch(`${restEndpoint}/rest-query?${params.toString()}`, {
+          signal: deadline.signal,
+          ...(requestContext?.headers ? { headers: requestContext.headers } : {}),
+        });
         // If the race is won by the deadline, the loser can still reject later;
         // swallow that so it is not an unhandled rejection.
         inFlight.catch(() => {});

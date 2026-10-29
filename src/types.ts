@@ -15,6 +15,16 @@ export interface SyncTransportDecision {
 }
 export type SyncFallbackObserver = (mechanism: 'browser-sync-transport', decision: SyncTransportDecision) => void;
 
+/** Host-selected routing hints; the server still owns authorization. */
+export interface SyncRequestContext {
+  /** Stable, non-secret cache identity for this instance/workspace/session. */
+  key: string;
+  /** Fixed request headers, captured before queries enter the scheduler. */
+  headers?: Record<string, string>;
+  /** Fixed SSE and REST query parameters, also included in stream ownership. */
+  params?: Record<string, string>;
+}
+
 export interface SyncProviderProps {
   /**
    * Preferred transport. `WEBSOCKETS` is accepted for source compatibility,
@@ -28,6 +38,8 @@ export interface SyncProviderProps {
   server?: string;
   /** REST endpoint base URL for polling. Default: server value or '/zero'. */
   restEndpoint?: string;
+  /** Isolate caches, delta cursors, queued requests and streams by host context. */
+  requestContext?: SyncRequestContext;
   /**
    * Polling interval in ms for the POLLING transport and its SSE fallback,
    * where the tick IS the freshness source.

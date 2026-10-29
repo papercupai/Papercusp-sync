@@ -79,6 +79,7 @@ export function SyncProvider({
   userId,
   server,
   restEndpoint,
+  requestContext,
   pollIntervalMs = 10_000,
   ssePollIntervalMs,
   fallbackDelayMs = 10_000,
@@ -113,6 +114,7 @@ export function SyncProvider({
     userId,
     server,
     restEndpoint,
+    requestContext,
     pollIntervalMs,
     onTransportError,
     // Shared by both adapters — both drive the same single-query fetcher.
@@ -154,7 +156,7 @@ export function SyncProvider({
         fallback={<PendingSyncAdapter transport="SSE">{children}</PendingSyncAdapter>}
       >
         <SSEAdapter
-          key="sse"
+          key={`sse:${requestContext?.key ?? ''}`}
           {...commonProps}
           stream={streaming}
           onTransportHealthChange={onTransportHealthChange}
@@ -168,7 +170,7 @@ export function SyncProvider({
 
   // POLLING as an explicit preference (terminal: it never changes transport).
   return (
-    <PollingAdapter key="polling" {...commonProps}>
+    <PollingAdapter key={`polling:${requestContext?.key ?? ''}`} {...commonProps}>
       {children}
     </PollingAdapter>
   );

@@ -5,13 +5,14 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { SyncContext } from '../../SyncContext';
 import { getQueryClient } from './queryClient';
 import { createUsePollingQuery, createPrefetchSync } from './usePollingQuery';
-import type { SyncType } from '../../types';
+import type { SyncType, SyncRequestContext } from '../../types';
 
 interface PollingAdapterProps {
   children: ReactNode;
   userId?: string;
   server?: string;
   restEndpoint?: string;
+  requestContext?: SyncRequestContext;
   pollIntervalMs?: number;
   /** When set, every `/rest-query` URL gets `?token=<encoded>` appended.
    *  Mirrors the SSE adapter's `tokenQueryParam`. */
@@ -47,6 +48,7 @@ export const POLLING_DEFAULT_INTERVAL_MS = 10_000;
 export function PollingAdapter({
   children,
   restEndpoint,
+  requestContext,
   server,
   pollIntervalMs = POLLING_DEFAULT_INTERVAL_MS,
   tokenQueryParam,
@@ -56,16 +58,16 @@ export function PollingAdapter({
 }: PollingAdapterProps) {
   const endpoint = restEndpoint ?? (server ? `${server}/zero` : DEFAULT_REST_ENDPOINT);
   warnIfDefaultUsedInProd(endpoint);
-  const queryClient = getQueryClient();
+  const queryClient = getQueryClient(requestContext?.key);
 
   const useDataImpl = useMemo(
-    () => createUsePollingQuery({ restEndpoint: endpoint, defaultPollIntervalMs: pollIntervalMs, tokenQueryParam, maxInFlightFetches, persistExcludeQueryNames, queryNameAllowlist }),
-    [endpoint, pollIntervalMs, tokenQueryParam, maxInFlightFetches, persistExcludeQueryNames, queryNameAllowlist],
+    () => createUsePollingQuery({ restEndpoint: endpoint, requestContext, defaultPollIntervalMs: pollIntervalMs, tokenQueryParam, maxInFlightFetches, persistExcludeQueryNames, queryNameAllowlist }),
+    [endpoint, requestContext, pollIntervalMs, tokenQueryParam, maxInFlightFetches, persistExcludeQueryNames, queryNameAllowlist],
   );
 
   const prefetch = useMemo(
-    () => createPrefetchSync({ restEndpoint: endpoint, defaultPollIntervalMs: pollIntervalMs, tokenQueryParam, maxInFlightFetches, queryNameAllowlist }, queryClient),
-    [endpoint, pollIntervalMs, tokenQueryParam, maxInFlightFetches, queryNameAllowlist, queryClient],
+    () => createPrefetchSync({ restEndpoint: endpoint, requestContext, defaultPollIntervalMs: pollIntervalMs, tokenQueryParam, maxInFlightFetches, queryNameAllowlist }, queryClient),
+    [endpoint, requestContext, pollIntervalMs, tokenQueryParam, maxInFlightFetches, queryNameAllowlist, queryClient],
   );
 
   const ctxValue = useMemo(

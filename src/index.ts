@@ -1,4 +1,5 @@
 export { SyncProvider } from './SyncProvider';
+export { getQueryClient as getSyncQueryClient } from './transports/polling/queryClient';
 export { onSyncBusEvent, emitSyncBusEvent, type SyncBusEvent } from './bus-tap';
 export {
   useSyncConnectivity,
@@ -141,6 +142,7 @@ export type { SyncDeltaCodec, SyncDeltaMeta, SyncDeltaSlot } from './delta-codec
 export type {
   SyncType,
   SyncProviderProps,
+  SyncRequestContext,
   SyncQueryOptions,
   SyncQueryResult,
   PrefetchSyncFn,

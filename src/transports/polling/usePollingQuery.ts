@@ -2,7 +2,7 @@
 
 import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import type { SyncQueryOptions, SyncQueryResult } from '../../types';
+import type { SyncQueryOptions, SyncQueryResult, SyncRequestContext } from '../../types';
 import {
   syncMetrics,
   installSyncMetricsGlobal,
@@ -13,6 +13,7 @@ import { getQueryClient } from './queryClient';
 
 interface PollingConfig {
   restEndpoint: string;
+  requestContext?: SyncRequestContext;
   defaultPollIntervalMs: number;
   /**
    * When set, appended as `?token=<encoded>` to every sync fetch.
@@ -69,6 +70,8 @@ export function createUsePollingQuery(config: PollingConfig) {
     config.restEndpoint,
     config.tokenQueryParam,
     config.maxInFlightFetches ?? DEFAULT_MAX_IN_FLIGHT,
+    undefined,
+    config.requestContext,
   );
   // Built once per adapter mount (config is stable per useMemo at the call
   // site), not per render.
@@ -105,7 +108,7 @@ export function createUsePollingQuery(config: PollingConfig) {
         syncMetrics.cacheMiss();
         return fetchQuery(queryName, JSON.parse(argsKey), { signal, requestClass });
       },
-      [queryName, argsKey, requestClass],
+      [queryName, argsKey, requestClass, fetchQuery],
     );
 
     const { data, isLoading, isFetching, isPlaceholderData, error, refetch, failureCount, failureReason } = useQuery({
@@ -208,6 +211,8 @@ export function createPrefetchSync(config: PollingConfig, queryClient: QueryClie
     config.restEndpoint,
     config.tokenQueryParam,
     config.maxInFlightFetches ?? DEFAULT_MAX_IN_FLIGHT,
+    undefined,
+    config.requestContext,
   );
   const queryNameAllowSet = config.queryNameAllowlist
     ? new Set(config.queryNameAllowlist)
@@ -251,6 +256,7 @@ export async function fetchSyncQuery<T = unknown>(opts: SyncQueryOptions & {
   restEndpoint?: string;
   tokenQueryParam?: string;
   maxInFlightFetches?: number;
+  requestContext?: SyncRequestContext;
 }): Promise<T[]> {
   const {
     queryName,
@@ -259,9 +265,10 @@ export async function fetchSyncQuery<T = unknown>(opts: SyncQueryOptions & {
     restEndpoint = '/api/zero-harness',
     tokenQueryParam,
     maxInFlightFetches,
+    requestContext,
   } = opts;
-  const fetchQuery = getQueryFetcher(restEndpoint, tokenQueryParam, maxInFlightFetches);
-  const result = await getQueryClient().fetchQuery({
+  const fetchQuery = getQueryFetcher(restEndpoint, tokenQueryParam, maxInFlightFetches, undefined, requestContext);
+  const result = await getQueryClient(requestContext?.key).fetchQuery({
     queryKey: ['sync', queryName, args],
     queryFn: ({ signal }) => fetchQuery(queryName, args, { signal }),
     staleTime,

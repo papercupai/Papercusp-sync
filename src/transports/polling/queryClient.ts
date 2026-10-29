@@ -1,8 +1,9 @@
 import { QueryClient } from '@tanstack/react-query';
 
-let queryClient: QueryClient | null = null;
+const queryClients = new Map<string, QueryClient>();
 
-export function getQueryClient(): QueryClient {
+export function getQueryClient(scope = ''): QueryClient {
+  let queryClient = queryClients.get(scope);
   if (!queryClient) {
     queryClient = new QueryClient({
       defaultOptions: {
@@ -37,6 +38,7 @@ export function getQueryClient(): QueryClient {
         },
       },
     });
+    queryClients.set(scope, queryClient);
   }
   return queryClient;
 }
@@ -47,7 +49,8 @@ export function getQueryClient(): QueryClient {
  * probe-window polls; currently unused, retained as a cache-reset utility.)
  */
 export function clearPollingCache(): void {
-  if (!queryClient) return;
-  queryClient.cancelQueries();
-  queryClient.clear();
+  for (const queryClient of queryClients.values()) {
+    void queryClient.cancelQueries();
+    queryClient.clear();
+  }
 }
